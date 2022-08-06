@@ -1,0 +1,2 @@
+cc_num,g_nodes,g_edges,g_degree,g_density,g_diameter,g_avg_path,g_transitivity,g_transitivity_avglocal
+1.0,2314.0,9817.0,8.484874675885914,0.003668341839985262,6.0,2.871790761398596,0.04481345723524365,0.4903503935386131
