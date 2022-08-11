@@ -35,7 +35,7 @@ Directories:
 
 ##### Defenses (defense directory)
 
-The budget and  port needs to be set within each script itself. Default values are already there.
+The budget needs to be set within each script itself. Default values are already there.
 Plotting scripts are available for each defense, within each method's directory.
 
 * NodeSplit (nodesplit directory)
