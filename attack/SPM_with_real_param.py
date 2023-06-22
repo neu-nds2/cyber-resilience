@@ -12,7 +12,7 @@ import math
 import time
 
 sys.path.append(os.path.abspath("../"))
-from constants import PATH_DIR, GRAPH_FILE
+from constants import PATH_DIR
 
 # the parameters are, in order: 
 # name of attack trace: (beta (infection probability),  mu (recovery rate), gamma1, gamma2)
@@ -126,40 +126,32 @@ class SPM_Simulation:
                 
             #Susceptible - Infected - Infected Dormant - Recovered model
             else:
-                # move neighbors from susceptible to infected with p = beta, or infect a random susceptible node 
+                #new infections with p = beta
                 for node in self.infected:
-                    if len(self.susceptible) == 0:
-                        break
-
-                    nbrs = set(self.graph.neighbors(node, mode = 'out'))
-                    nbrs &= self.susceptible
-                    # print("nbrs, self.susceptible: ", len(nbrs), len(self.susceptible))
-
-                    nbrs_infected = set([n for n in nbrs if random.random() <= self.beta])
-                    # print("nbrs_infected: ", len(nbrs_infected))
-
-                    infected_new |= nbrs_infected
-
-                # move from infected to infected dormant with p = gamma1
-                dormant_new = set([n for n in self.infected if random.random() <= self.gamma1])
-
-                # move from infected_dormant to infected with p = gamma2
+                    if len(self.susceptible) != 0:
+                        nbrs = set(self.graph.neighbors(node, mode = 'out'))
+                        nbrs &= self.susceptible
+                        nbrs_infected = set([n for n in nbrs if random.random() <= self.beta])
+                        infected_new |= nbrs_infected
+        
+                #moving from infected_dormant to infected with p = gamma2
                 dormant_to_infected = set([n for n in self.infected_dormant if random.random() <= self.gamma2])
+    
+                #leaving infected to infected dormant and recovered
+                if len(self.susceptible) != 0:
+                    infected_leaving = set([n for n in self.infected if random.random() <= self.gamma1 + self.mu])
+                    recovered_prob = self.mu     / (self.mu + self.gamma1)
+                    dormant_prob = self.gamma1 / (self.mu + self.gamma1)
+                    recovered_new  = set([n for n in infected_leaving if random.random() <= recovered_prob])
+                    dormant_new  = infected_leaving - recovered_new
 
-                # move from infected to recovered with p = mu
-                # making sure we are not choosing some of the same nodes we chose in dormant_new
+                #updating sets
                 self.infected -= dormant_new
-                recovered_new = set([n for n in self.infected if random.random() <= self.mu])
-              
-                # update all sets for next iteration
-                self.susceptible -= infected_new
-                
                 self.infected -= recovered_new
+                self.susceptible -= infected_new
                 self.infected |= (infected_new | dormant_to_infected)
-                
                 self.infected_dormant -= dormant_to_infected
                 self.infected_dormant |= dormant_new
-
                 self.recovered |= recovered_new
 
                 if len(self.susceptible) + len(self.infected) + len(self.infected_dormant) + len(self.recovered) != len(self.graph.vs):
@@ -312,23 +304,24 @@ def run_spm(g, results_dir, frac_infected=None, lcc_only=False, m='SI', num_expe
     ds.run_simulation_over_experiments(frac_infected, lcc_only)
 
 
-def get_filename(method, method1, gname, splits, budget_edges, budget_nodes):
+def get_filename(method, method1, port, splits, budget_edges, budget_nodes):
+    day = "2021_11_08"
     if method == 'nodefense':
-        filename = os.path.join(PATH_DIR, gname + ".pkl")
+        filename = os.path.join(PATH_DIR, 'graph_port{}_{}.pkl'.format(port, day))
     elif method == 'nodesplit':
-        filename = os.path.join(PATH_DIR, '{}/{}/graph_splits{}.pkl'.format(method, gname, splits))
+        filename = os.path.join(PATH_DIR, '{}/port{}/graph_p{}_{}_splits{}.pkl'.format(method, port, port, method, splits))
     elif method == 'rm_edges' and method1 == 'random':
-        filename = os.path.join(PATH_DIR, '{}/{}/graph-{}_b{}.pkl'.format(method, method1, gname, budget_edges))
+        filename = os.path.join(PATH_DIR, '{}/{}/graph-port{}_b{}.pkl'.format(method, method1, port, budget_edges))
     elif method == 'met' and method1 == '':
-        filename = os.path.join(PATH_DIR, 'rm_edges/{}/graph-{}_b{}.pkl'.format(method, gname, budget_edges))
+        filename = os.path.join(PATH_DIR, '{}/graph-port{}_b{}.pkl'.format(method, port, budget_edges))
     elif method == 'met' and method1 == 'after_nodesplit':
-        filename = os.path.join(PATH_DIR, 'rm_edges/{}/{}/{}/splits{}/graph_b{}.pkl'.format(method, method1, gname, splits, budget_edges))
+        filename = os.path.join(PATH_DIR, '{}/{}/port{}/splits{}/graph-port{}_b{}.pkl'.format(method, method1, port, splits, port, budget_edges))
     elif method == 'rm_nodes':
-        filename = os.path.join(PATH_DIR, '{}/{}/graph-{}_b{}.pkl'.format(method, method1, gname, budget_nodes))
+        filename = os.path.join(PATH_DIR, '{}/{}/graph-port{}_b{}.pkl'.format(method, method1, port, budget_nodes))
     elif method == 'isolation' and method1 == '':
-        filename = os.path.join(PATH_DIR, '{}/graphs/{}/graph_leiden_splits0.pkl'.format(method, gname))
+        filename = os.path.join(PATH_DIR, '{}/graphs/port{}/graph_p{}_leiden_splits0.pkl'.format(method, port, port))
     elif method == 'isolation' and method1 == 'after_nodesplit':
-        filename = os.path.join(PATH_DIR, '{}/graphs/{}/graph_leiden_splits{}.pkl'.format(method, gname, splits))
+        filename = os.path.join(PATH_DIR, '{}/graphs/port{}/graph_p{}_leiden_splits{}.pkl'.format(method, port, port, splits))
     else:
         print("Incorrect method! ")
         print(method, method1)
@@ -345,14 +338,16 @@ def get_filename(method, method1, gname, splits, budget_edges, budget_nodes):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
+    parser.add_argument("PORT", help="The infected port.")
     parser.add_argument("INDEX", help="Defense method, by index.")
     parser.add_argument("PARAM_INDEX", help="Parameters set, by index.")
     args = parser.parse_args()
     print(args)
 
+    port = int(args.PORT)
     index = int(args.INDEX) 
     param_index = int(args.PARAM_INDEX) 
-    print(index, param_index)
+    print(port, index, param_index)
 
     seed = 1
     random.seed(seed)
@@ -362,8 +357,8 @@ if __name__ == '__main__':
     # defenses_eigen = [('nodefense', ''), ('nodesplit', ''), ('rm_edges', 'random'),  ('met', ''), ('met', 'after_nodesplit')]
     # defenses_fragm = [('rm_nodes', 'random'), ('rm_nodes', 'degree_iterative'), ('rm_nodes', 'ens'), ('rm_nodes', 'xnb_iterative'), ('isolation', ''), ('isolation', 'after_nodesplit')]
 
-    defenses_eigen = [('nodefense', ''), ('nodesplit', ''), ('met', 'after_nodesplit')]
-    defenses_fragm = [('rm_nodes', 'degree_iterative'), ('rm_nodes', 'ens'), ('isolation', ''), ('isolation', 'after_nodesplit')]
+    defenses_eigen = [('nodefense', ''), ('nodesplit', '')]
+    defenses_fragm = [('rm_nodes', 'degree_iterative'), ('isolation', ''), ('isolation', 'after_nodesplit')]
 
     defenses = defenses_eigen + defenses_fragm
 
@@ -385,13 +380,12 @@ if __name__ == '__main__':
     frac_infected = None  # a single starting point (default), not a fraction
     lcc_only = False
 
-    gname = os.path.splitext(GRAPH_FILE)[0]
-    g_filename = get_filename(method, method1, gname, splits, budget_edges, budget_nodes)
-    if not g_filename:  exit()
-    
-    print("graph = {} defense = {}".format(gname, defense))
+    print("port = {}, defense = {}".format(port, defense))
     print("num_experiments = {}, num_runs = {}, num_steps = {}, frac_infected = {}".format(num_experiments, num_runs, num_steps, frac_infected))
     print("budget_edges = {}, budget_nodes = {}, splits = {}".format(budget_edges, budget_nodes, splits))
+
+    g_filename = get_filename(method, method1, port, splits, budget_edges, budget_nodes)
+    if not g_filename:  exit()
 
     #read graph from file
     print("\nReading graph from: ", g_filename)
@@ -407,7 +401,7 @@ if __name__ == '__main__':
         mu = params[1]
         gamma1 = params[2]
         gamma2 = params[3]
-        results_dir = os.path.join(PATH_DIR, "attack", model, "{}/{}/{}/".format(gname, defense, list(siidr_params.keys())[param_index]))
+        results_dir = os.path.join(PATH_DIR, "siidr_attack/port{}/{}/{}/".format(port, defense, list(siidr_params.keys())[param_index]))
         run_spm(g, results_dir, frac_infected, lcc_only, model, num_experiments, num_runs, num_steps, beta, mu, gamma1, gamma2, alpha=0)
 
 
